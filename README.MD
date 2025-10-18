@@ -56,10 +56,11 @@ it will appear UI like this:
 
 ## Example Workflow
 - Input your DEM or satellite image.
-- Optionally apply hillshade() or downscale for efficiency.
-- Extract edge points using extract_lineament_points().
-- Convert points to lines and merge them with reduce_lines().
-- Save as shapefile using dem_to_shp() or merge_lines_csv_to_shp().
+- Optionally apply `hillshade()` or downscale for efficiency.
+- Extract edge points using `extract_lineament_points()`.
+- Convert points to lines and merge them with `reduce_lines()`.
+- Save as shapefile using `dem_to_shp()` or `dem_to_shp_small()`.
+- more workflow are presented in `example` folder
 
 ## example how to use this Library with CLI or python
 
@@ -83,7 +84,6 @@ see more examples in example folder
 | `split_size` | DEM/image tile size for processing    | 250 – 1000 pixels |
 
 
-
 ## Why PyLineament?
 Typical “automatic” lineament extraction tools are limited by:
 - Fixed image resolution and poor scalability,
@@ -105,5 +105,6 @@ Version 1.0. https://github.com/epokus/pylineament
 ## License
 This project is licensed under the MIT License — see the LICENSE
  file for details.
+
 
 
