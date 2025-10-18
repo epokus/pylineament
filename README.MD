@@ -4,6 +4,8 @@
 
 It is designed for geological and geomorphological analysis — providing a **fully automated, reproducible**, and **scalable** workflow for extracting, reducing, and mapping lineaments across local to regional scales.
 
+![alt text](https://github.com/epokus/pylineament/blob/main/example/lienament_extracted.png?raw=true)
+
 ---
 
 ## Installation
@@ -103,4 +105,5 @@ Version 1.0. https://github.com/epokus/pylineament
 ## License
 This project is licensed under the MIT License — see the LICENSE
  file for details.
+
 
