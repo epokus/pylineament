@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pylineament"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python Geological Lineament extraction package"
 readme = "README.md"
 authors = [{ name="Epo Kusumah", email="epo.pk@universiaspertamina.ac.id" }]
@@ -48,5 +48,6 @@ Homepage = "https://github.com/epokus/pylineament"
 
 [project.scripts]
 pylineament = "pylineament.pylineament_ui:main"
+
 
 
