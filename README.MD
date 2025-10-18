@@ -23,9 +23,14 @@ pip install -e .
 
 Once installed, simply open your terminal or command prompt and run:
 
+
+
 ```bash
 pylineament
 ```
+it will appear UI like this:
+![alt text](https://github.com/epokus/pylineament/blob/main/example/pylineament_ui_image.png?raw=true)
+
 
 ## Key Features
 - Interactive UI — Run `pylineament` in the terminal to open the GUI.
@@ -98,3 +103,4 @@ Version 1.0. https://github.com/epokus/pylineament
 ## License
 This project is licensed under the MIT License — see the LICENSE
  file for details.
+
