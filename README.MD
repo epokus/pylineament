@@ -31,6 +31,7 @@ Once installed, simply open your terminal or command prompt and run:
 pylineament
 ```
 it will appear UI like this:
+
 ![alt text](https://github.com/epokus/pylineament/blob/main/example/pylineament_ui_image.png?raw=true)
 
 
@@ -105,6 +106,7 @@ Version 1.0. https://github.com/epokus/pylineament
 ## License
 This project is licensed under the MIT License — see the LICENSE
  file for details.
+
 
 
 
