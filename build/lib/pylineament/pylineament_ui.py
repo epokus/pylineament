@@ -755,7 +755,10 @@ class MainWindow(QMainWindow):
                                 [min_dist]*len(flist), 
                                 [seg_len]*len(flist), 
                                 [z_multip]*len(flist),
-                                [downscale]*len(flist))).values
+                                [downscale]*len(flist),
+                                [True]*len(flist))).values
+        
+        # print(cases)
 
         from joblib import Parallel, delayed
         Parallel(n_jobs=-1)(delayed(dem_to_line)(*c) for c in cases)
