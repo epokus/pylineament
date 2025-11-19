@@ -13,14 +13,16 @@ from PyQt5.QtWidgets import (QApplication,
                              QLabel, 
                              QComboBox,
                              QCheckBox, 
-                             QSplitter )
+                             QSplitter,
+                            QProgressBar )
 
-from PyQt5.QtCore import QThreadPool, QRunnable
+from PyQt5.QtCore import QThreadPool, QRunnable, QObject, pyqtSignal
 
 
 from skimage.transform import rescale
 
 from PyQt5.QtCore import Qt
+
 
 import numpy as np
 import pandas as pd
@@ -71,11 +73,59 @@ class ImageSplitterParallel(QRunnable):
         new_dataset.close()
 
 
+class WorkerSignals(QObject):
+    finished = pyqtSignal()
+
+class demToLineParallel(QRunnable):
+    def __init__(self,
+                 flist,
+                 temp_folder,
+                 eps,
+                 thresh,
+                 min_dist,
+                 seg_len,
+                 z_multip,
+                 downscale,
+                 csv):
+        super().__init__()
+        self.signals = WorkerSignals()
+
+        self.flist = flist
+        self.temp_folder = temp_folder
+        self.eps = eps
+        self.thresh = thresh
+        self.min_dist = min_dist
+        self.seg_len = seg_len
+        self.z_multip = z_multip
+        self.downscale = downscale
+        self.csv = csv
+
+    def run(self):
+
+        dem_to_line(self.flist,
+                    self.temp_folder,
+                    self.eps,
+                    self.thresh,
+                    self.min_dist,
+                    self.seg_len,
+                    self.z_multip,
+                    self.downscale,
+                    self.csv
+                    )
+
+        self.signals.finished.emit()
+
+
 class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
         self.threadpool = QThreadPool.globalInstance()
+        self.thread_pool = QThreadPool()
+        print("Using threads:", self.thread_pool.maxThreadCount())
+        self.thread_pool.setMaxThreadCount(QThreadPool.globalInstance().maxThreadCount() - 1)
+        print("Using threads:", self.thread_pool.maxThreadCount())
+
         self.setWindowTitle("Lineamentor - Lineament Extractor form large DEM")
         # self.setGeometry(100, 100, 800, 600)
 
@@ -108,7 +158,6 @@ class MainWindow(QMainWindow):
         self.previewRegionLineCleanCheckbox.stateChanged.connect(self.previewRegenAction)
 
 
-
     def initLayout(self):
 
         middleSplitter = QSplitter()
@@ -132,6 +181,17 @@ class MainWindow(QMainWindow):
         middleSplitter.addWidget(rightWidget)
 
         rightLayout.addWidget(righTab)
+
+        self.progressBar = QProgressBar()
+        self.progressBar.setMaximumWidth(200)
+        self.progressBar.setEnabled(True)
+        self.taskText = QLabel('Please Run The task')
+
+        self.bottomBar = QHBoxLayout()
+        self.bottomBar.addWidget(self.taskText)
+        self.bottomBar.addWidget(self.progressBar)
+
+        rightLayout.addLayout(self.bottomBar)
 
 
         righTab.addTab(previewBigWidget, 'overview', )
@@ -676,21 +736,37 @@ class MainWindow(QMainWindow):
         dataset = rasterio.open(im_path)
         im  = dataset.read(1)
         shape = im.shape
+    
+    
         left, bottom, right, top = list(dataset.bounds)
+
+        if (left == 0.0) and (top == 0.0):
+            bottom = -bottom
+
         resX = (right-left)/im.shape[1]
         resY = (top-bottom)/im.shape[0]
 
-        if shape[0]<sz:
+        # sz = split_size
+
+        if shape[0]<=sz:
             v_split = np.array([[0, shape[0]]])
+            # print('small', v_split)
         else:
             v_split = np.c_[np.arange(0, shape[0]-sz, sz), np.arange(0, shape[0]-sz, sz)+sz]
+            # print('v_split \n', v_split)
             v_split = np.vstack([v_split, [v_split[-1,-1],shape[0]]])
+            # print('v_split \n', v_split)
 
-        if shape[1]<sz:
+
+        if shape[1]<=sz:
             h_split = np.array([[0, shape[1]]])
+            # print('small', h_split)
+
         else:
             h_split = np.c_[np.arange(0, shape[1]-sz, sz), np.arange(0, shape[1]-sz, sz)+sz]
+            # print('h_split \n', h_split)
             h_split = np.vstack([h_split, [h_split[-1,-1],shape[1]]])
+            # print('h_split \n', h_split)
 
 
         xx, yy = np.meshgrid(np.arange(len(v_split)), np.arange(len(h_split)))
@@ -720,10 +796,14 @@ class MainWindow(QMainWindow):
         for n, tempfolder, left, top, resX, resY, sz, L, R, B, T in df.values:
             l = left + L*resX
             # b = top - T*resY - sz*resY
-            b = top + T*resY
+            b = top - T*resY
 
-            transform = rasterio.Affine.translation(l - resX / 2, b + resY / 2) * rasterio.Affine.scale(resX, resY)
+            transform = rasterio.Affine.translation(l - resX / 2, b - resY / 2) * rasterio.Affine.scale(resX, resY)
+
+            
+            # Z  = im[B:T, L:R].astype('float')
             Z  = im[B:T, L:R].astype('float')
+            Z  = Z[::-1]
 
             transforms.append(transform)
             ims.append(Z)
@@ -755,24 +835,55 @@ class MainWindow(QMainWindow):
                                 [min_dist]*len(flist), 
                                 [seg_len]*len(flist), 
                                 [z_multip]*len(flist),
-                                [downscale]*len(flist))).values
-
-        from joblib import Parallel, delayed
-        Parallel(n_jobs=-1)(delayed(dem_to_line)(*c) for c in cases)
-
-        df = merge_lines_csv_to_shp(tempfolder=temp_folder, 
-                                    shppath=shp_path, 
-                                    save_to_file=True)
+                                [downscale]*len(flist),
+                                [True]*len(flist))).values
         
 
-        if keep_intermediate_file == False:
+        self.progress = 0
+        self.totalCase = len(cases)
+
+        self.stepUpdate()
+
+        for i in range(len(cases)):
+            c_ = cases[i]
+            worker = demToLineParallel(*c_)
+            worker.signals.finished.connect(self.stepUpdate)
+            worker.signals.finished.connect(self.checkFinished)
+
+            self.thread_pool.start(worker)
+
+        # self.thread_pool.waitForDone()
+        # 
+        self.temp_folder = temp_folder    
+        self.shp_path = shp_path
+        self.save_to_file = True
+        self.keep_intermediate_file = keep_intermediate_file
+        self.tempfolder = tempfolder
+
+    def stepUpdate(self):
+        self.progress += 1
+
+        self.progressBar.setValue(int((self.progress / self.totalCase)*100))
+        tx = f'processing {self.progress}/{self.totalCase}'
+        self.taskText.setText(tx)
+
+    def checkFinished(self):
+        import glob
+
+        if self.progress == self.totalCase:
+
+            df = merge_lines_csv_to_shp(tempfolder= self.temp_folder, 
+                                        shppath= self.shp_path, 
+                                        save_to_file=True)
             
-            if os.path.isdir(tempfolder):
-                'delete content' 
-                files = glob.glob(f'{tempfolder}/*')
-                for f in files:
-                    os.remove(f)
-                os.removedirs(tempfolder)
+            if self.keep_intermediate_file == False:
+                
+                if os.path.isdir(self.tempfolder):
+                    'delete content' 
+                    files = glob.glob(f'{self.tempfolder}/*')
+                    for f in files:
+                        os.remove(f)
+                    os.removedirs(self.tempfolder)
 
 
 def main():
