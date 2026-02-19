@@ -16,9 +16,9 @@ from PyQt5.QtWidgets import (QApplication,
                              QSplitter,
                             QProgressBar )
 
-from PyQt5.QtCore import QThreadPool, QRunnable, QObject, pyqtSignal
+from PyQt5.QtCore import QThreadPool, QRunnable, QObject, pyqtSignal, QUrl
 
-
+from PyQt5 import QtGui
 from skimage.transform import rescale
 
 from PyQt5.QtCore import Qt
@@ -26,14 +26,14 @@ from PyQt5.QtCore import Qt
 
 import numpy as np
 import pandas as pd
-from pylineament import (dem_to_line, 
-                         read_raster,
+from pylineament import (read_raster,
                          extract_lineament_points,
                          convert_points_to_line,
                          reduce_lines,
                          merge_lines_csv_to_shp, 
                          hillshade)
 import os 
+import multiprocessing
 
 
 class ImageSplitterParallel(QRunnable):
@@ -74,7 +74,18 @@ class ImageSplitterParallel(QRunnable):
 
 
 class WorkerSignals(QObject):
-    finished = pyqtSignal()
+    finished = pyqtSignal(object)
+    error = pyqtSignal(str)
+
+
+def run_calculation_task(flist, temp_folder, eps, thresh, min_dist, seg_len, z_multip, downscale, csv):
+    from pylineament import dem_to_line
+
+    dem_to_line(
+        flist, temp_folder, eps, thresh, min_dist, 
+        seg_len, z_multip, downscale, csv
+    )
+
 
 class demToLineParallel(QRunnable):
     def __init__(self,
@@ -90,30 +101,19 @@ class demToLineParallel(QRunnable):
         super().__init__()
         self.signals = WorkerSignals()
 
-        self.flist = flist
-        self.temp_folder = temp_folder
-        self.eps = eps
-        self.thresh = thresh
-        self.min_dist = min_dist
-        self.seg_len = seg_len
-        self.z_multip = z_multip
-        self.downscale = downscale
-        self.csv = csv
-
+        self.args = (flist, temp_folder, eps, thresh, min_dist, seg_len, z_multip, downscale, csv)
+        
     def run(self):
-
-        dem_to_line(self.flist,
-                    self.temp_folder,
-                    self.eps,
-                    self.thresh,
-                    self.min_dist,
-                    self.seg_len,
-                    self.z_multip,
-                    self.downscale,
-                    self.csv
-                    )
-
-        self.signals.finished.emit()
+        p = multiprocessing.Process(
+            target=run_calculation_task,
+            args=self.args
+        )    
+        p.start()
+        p.join() 
+        if p.exitcode != 0:
+            self.signals.error.emit(f"Process failed with exit code {p.exitcode}")
+        else:
+            self.signals.finished.emit(None)
 
 
 class MainWindow(QMainWindow):
@@ -122,12 +122,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.threadpool = QThreadPool.globalInstance()
         self.thread_pool = QThreadPool()
-        print("Using threads:", self.thread_pool.maxThreadCount())
         self.thread_pool.setMaxThreadCount(QThreadPool.globalInstance().maxThreadCount() - 1)
         print("Using threads:", self.thread_pool.maxThreadCount())
 
         self.setWindowTitle("Lineamentor - Lineament Extractor form large DEM")
-        # self.setGeometry(100, 100, 800, 600)
 
 
         self.mainWidget = QWidget()
@@ -172,7 +170,7 @@ class MainWindow(QMainWindow):
 
         leftLayout = QVBoxLayout(leftWidget)
         rightLayout = QVBoxLayout(rightWidget)
-        righTab = QTabWidget()
+        self.righTab = QTabWidget()
 
         previewBigLayout = QVBoxLayout(previewBigWidget)
         previewSmallLayout = QVBoxLayout(previewSmallWidget)
@@ -180,7 +178,7 @@ class MainWindow(QMainWindow):
         middleSplitter.addWidget(leftWidget)
         middleSplitter.addWidget(rightWidget)
 
-        rightLayout.addWidget(righTab)
+        rightLayout.addWidget(self.righTab)
 
         self.progressBar = QProgressBar()
         self.progressBar.setMaximumWidth(200)
@@ -194,8 +192,8 @@ class MainWindow(QMainWindow):
         rightLayout.addLayout(self.bottomBar)
 
 
-        righTab.addTab(previewBigWidget, 'overview', )
-        righTab.addTab(previewSmallWidget, 'extraction preview', )
+        self.righTab.addTab(previewBigWidget, 'overview', )
+        self.righTab.addTab(previewSmallWidget, 'extraction preview', )
 
         # rightLayout.addLayout()
 
@@ -298,7 +296,7 @@ class MainWindow(QMainWindow):
         col2previewSmallMenuLayout.addLayout(previewRegionLineCleanLayout)
 
         col3previewSmallMenuLayout.addStretch()
-        col3previewSmallMenuLayout.addWidget(self.previewRegen)
+        # col3previewSmallMenuLayout.addWidget(self.previewRegen)
 
 
         leftLayout.addWidget(self.openImageButton)
@@ -312,8 +310,11 @@ class MainWindow(QMainWindow):
         leftLayout.addLayout(minDistLayout)
         leftLayout.addLayout(segLenLayout)
 
+        leftLayout.addWidget(self.previewRegen)
+
         leftLayout.addWidget(self.resetButton)
-        # leftLayout.addWidget(self.previewRegen)
+                # col3previewSmallMenuLayout.addWidget(self.previewRegen)
+
         leftLayout.addStretch()
         leftLayout.addWidget(self.extractButon)
 
@@ -331,13 +332,12 @@ class MainWindow(QMainWindow):
     def loadImageAndPreview(self):
         sz     = self.subsetSideSlider.value() * self.subsetSideSlider.step
 
-
         self.regions, self.dem, self.extent, self.crs_espg = read_raster(self.file_name, split_size=sz)
 
         imgFormat = self.file_name.split('.')[-1]
         if (imgFormat == 'jpg') or (imgFormat == 'jpeg'):
             from PIL import Image
-            i = Image.open( r"C:\Users\user\Downloads\WhatsApp Image 2025-09-23 at 16.34.01.jpeg" )
+            i = Image.open( f"{self.file_name}" )
             self.orgImg = np.transpose(np.array(i),( 1,0,2))[:,::-1]
 
         else:
@@ -489,11 +489,14 @@ class MainWindow(QMainWindow):
 
 
     def previewRegenActionAndSmallCalc(self):
+        self.righTab.setCurrentIndex(1)
+
         self.smallCalc()
         self.previewRegenAction()
 
 
     def previewRegenAction(self):
+
         self.previewSmallImg.clear()
         self.getImageSubset()
 
@@ -838,39 +841,57 @@ class MainWindow(QMainWindow):
                                 [downscale]*len(flist),
                                 [True]*len(flist))).values
         
+        # from joblibworker import JoblibWorker
+        # from joblib import Parallel, delayed
+        # Parallel(n_jobs=-1)(delayed(dem_to_line)(*c) for c in cases)
 
         self.progress = 0
         self.totalCase = len(cases)
 
         self.stepUpdate()
 
+
+
         for i in range(len(cases)):
             c_ = cases[i]
+            
             worker = demToLineParallel(*c_)
             worker.signals.finished.connect(self.stepUpdate)
             worker.signals.finished.connect(self.checkFinished)
+            worker.signals.error.connect(lambda e: print("ERROR:", e))
 
             self.thread_pool.start(worker)
 
-        # self.thread_pool.waitForDone()
-        # 
+        
+
         self.temp_folder = temp_folder    
         self.shp_path = shp_path
         self.save_to_file = True
         self.keep_intermediate_file = keep_intermediate_file
         self.tempfolder = tempfolder
 
-    def stepUpdate(self):
-        self.progress += 1
 
-        self.progressBar.setValue(int((self.progress / self.totalCase)*100))
-        tx = f'processing {self.progress}/{self.totalCase}'
-        self.taskText.setText(tx)
+
+
+    def stepUpdate(self):
+        
+        if self.progress < self.totalCase:
+            self.extractButon.setEnabled(False)
+
+            self.progress += 1
+            self.progressBar.setValue(int((self.progress / self.totalCase)*100))
+            tx = f'processing {self.progress}/{self.totalCase}'
+            self.taskText.setText(tx)
 
     def checkFinished(self):
         import glob
 
-        if self.progress == self.totalCase:
+        if self.progress >= self.totalCase:
+            self.extractButon.setEnabled(True)
+
+            QtGui.QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(self.shp_path)))
+            tx = f'Finished!!!  Saved at {os.path.dirname(self.shp_path)}'
+            self.taskText.setText(tx)
 
             df = merge_lines_csv_to_shp(tempfolder= self.temp_folder, 
                                         shppath= self.shp_path, 
@@ -879,7 +900,7 @@ class MainWindow(QMainWindow):
             if self.keep_intermediate_file == False:
                 
                 if os.path.isdir(self.tempfolder):
-                    'delete content' 
+
                     files = glob.glob(f'{self.tempfolder}/*')
                     for f in files:
                         os.remove(f)
@@ -887,6 +908,8 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    multiprocessing.freeze_support()
+
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
@@ -895,5 +918,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

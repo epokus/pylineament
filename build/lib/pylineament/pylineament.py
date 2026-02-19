@@ -213,7 +213,7 @@ def reduce_lines(lines, extent, dem_shape, min_dist=10, seg_len=10):
     return initial_lines, broken_lines_, reduced_lines
 
 
-def extract_lineament_points(dem, eps=1.2, thresh=40,z_multip=1):
+def extract_lineament_points(dem, eps=1.2, thresh=40, z_multip=1, degress=(0, 360, 30)):
     """
     Detect edge points representing potential lineaments from a DEM.
 
@@ -250,7 +250,7 @@ def extract_lineament_points(dem, eps=1.2, thresh=40,z_multip=1):
     im_prewitt_clip = None
 
 
-    for num, deg in enumerate(range(0, 360, 30)):
+    for num, deg in enumerate(range(degress[0], degress[1], degress[2])):
 
         im = prewitt(hillshade(dem, deg, 0,z_multip))
 

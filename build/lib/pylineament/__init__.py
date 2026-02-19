@@ -11,8 +11,8 @@ from .pylineament import (
     dem_to_line,
     dem_to_shp,
     dem_to_shp_small
-
 )
+
 
 __all__ = [
     "read_raster",
@@ -26,5 +26,6 @@ __all__ = [
     "raster_resize",
     "dem_to_line",
     "dem_to_shp",
-    "dem_to_shp_small"
+    "dem_to_shp_small", 
 ]
+
