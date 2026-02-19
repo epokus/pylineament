@@ -1,0 +1,101 @@
+{
+ "version": "auto-py-to-exe-configuration_v1",
+ "pyinstallerOptions": [
+  {
+   "optionDest": "noconfirm",
+   "value": true
+  },
+  {
+   "optionDest": "filenames",
+   "value": "C:/Users/User/Documents/00 research/pylineament/pylineament/pylineament_ui.py"
+  },
+  {
+   "optionDest": "onefile",
+   "value": true
+  },
+  {
+   "optionDest": "console",
+   "value": false
+  },
+  {
+   "optionDest": "icon_file",
+   "value": "C:/Users/User/Documents/00 research/pylineament/icon.ico"
+  },
+  {
+   "optionDest": "clean_build",
+   "value": false
+  },
+  {
+   "optionDest": "strip",
+   "value": false
+  },
+  {
+   "optionDest": "noupx",
+   "value": false
+  },
+  {
+   "optionDest": "disable_windowed_traceback",
+   "value": false
+  },
+  {
+   "optionDest": "uac_admin",
+   "value": false
+  },
+  {
+   "optionDest": "uac_uiaccess",
+   "value": false
+  },
+  {
+   "optionDest": "argv_emulation",
+   "value": false
+  },
+  {
+   "optionDest": "bootloader_ignore_signals",
+   "value": false
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "rasterio"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "rasterio.sample"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "rasterio.vrt"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "rasterio._features"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "rasterio._env"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "rasterio._base"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "rasterio._io"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "rasterio._warp"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "rasterio._err"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "pylineament"
+  }
+ ],
+ "nonPyinstallerOptions": {
+  "increaseRecursionLimit": true,
+  "manualArguments": ""
+ }
+}
