@@ -35,7 +35,7 @@ it will appear UI like this:
 
 alternatively, you can download exe in this link:
 [download exe](https://drive.google.com/drive/folders/1HF11vDgf2SXvgOYosO-1e7RzLCq0QFGL?usp=sharing)
-
+[![Download](https://img.shields.io/badge/Download-Latest%20Release-brightgreen?style=for-the-badge)](https://drive.google.com/drive/folders/1HF11vDgf2SXvgOYosO-1e7RzLCq0QFGL?usp=sharing)
 
 ## Key Features
 - Interactive UI — Run `pylineament` in the terminal to open the GUI.
@@ -108,6 +108,7 @@ Version 1.0. https://github.com/epokus/pylineament
 ## License
 This project is licensed under the MIT License — see the LICENSE
  file for details.
+
 
 
 
