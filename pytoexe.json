@@ -7,7 +7,7 @@
   },
   {
    "optionDest": "filenames",
-   "value": "C:/Users/User/Documents/00 research/pylineament/pylineament/pylineament_ui.py"
+   "value": "C:/Users/User/Documents/00 research/pylineament/pylineament/gui/__main__.py"
   },
   {
    "optionDest": "onefile",
@@ -92,6 +92,34 @@
   {
    "optionDest": "hiddenimports",
    "value": "pylineament"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "pylineament.gui"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "pylineament.gui.pipeline"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "fiona"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "sklearn.cluster"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "sklearn.neighbors"
+  },
+  {
+   "optionDest": "hiddenimports",
+   "value": "skimage.filters"
+  },
+  {
+   "optionDest": "datas",
+   "value": "C:/Users/User/Documents/00 research/pylineament/pylineament/gui/icon.ico;pylineament/gui/"
   }
  ],
  "nonPyinstallerOptions": {

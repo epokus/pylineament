@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath('..'))  # add project root to path
 project = 'pylineament'
 copyright = '2025, Epo Prasetya Kusumah'
 author = 'Epo Prasetya Kusumah'
-release = '1.0.0'
+release = '1.1.0'
 
 # -- General configuration ---------------------------------------------------
 

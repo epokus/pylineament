@@ -297,7 +297,7 @@ def extract_lineament_points(dem, eps=1.2, thresh=40,z_multip=1):
     return container, im_prewitt, im_prewitt_clip
 
 
-def convert_points_to_line(container):
+def convert_points_to_line(container, line_fit='ols'):
 
     """
     Convert sets of edge points into connected line segments.
@@ -306,6 +306,10 @@ def convert_points_to_line(container):
     ----------
     container : list
         Extracted lineament points grouped by proximity.
+    line_fit : {'ols', 'pca'}, optional
+        'ols' (default, behaviour of v1.0.1) regresses row on column, which pulls
+        steep (N-S) clusters towards E-W. 'pca' fits the principal axis of each
+        cluster (total least squares) and is orientation-independent.
 
     Returns
     -------
@@ -329,6 +333,23 @@ def convert_points_to_line(container):
 
                 if len(temp) == 0:
                     continue
+
+                if line_fit == 'pca':
+                    xy = temp[['X', 'Y']].values.astype(float)
+                    centre = xy.mean(axis=0)
+                    _, vecs = np.linalg.eigh(np.cov((xy - centre).T))
+                    ux, uy = vecs[:, -1]
+                    t = (xy - centre) @ np.array([ux, uy])
+                    t0, t1 = np.nanpercentile(t, 5), np.nanpercentile(t, 95)
+                    xa, ya = centre + t0*np.array([ux, uy])
+                    xb, yb = centre + t1*np.array([ux, uy])
+                    if xa > xb:
+                        xa, ya, xb, yb = xb, yb, xa, ya
+                    min_x1, max_x1, min_y1, max_y1 = xa, xb, ya, yb
+                    deg = np.degrees(np.arctan2(uy, ux))
+                    container.append([q, g, deg, min_x1, max_x1, min_y1, max_y1])
+                    continue
+
                 mla = LinearRegression()
                 mla.fit(temp[['X']],temp['Y'])
 
@@ -684,7 +705,8 @@ def dem_to_line(path,
                 seg_len=10,
                 z_multip=1.0,
                 downscale = 1.0,
-                save_csv = False):
+                save_csv = False,
+                line_fit = 'ols'):
     """
     Extract lineaments directly from a DEM and return line features.
 
@@ -708,6 +730,8 @@ def dem_to_line(path,
         DEM downscaling factor (default is 1.0).
     save_csv : bool, optional
         Save intermediate line data to CSV (default is False).
+    line_fit : {'ols', 'pca'}, optional
+        Line-fitting method passed to convert_points_to_line (default 'ols').
 
     Returns
     -------
@@ -737,7 +761,7 @@ def dem_to_line(path,
                                                                       thresh=thresh,
                                                                       z_multip=z_multip)
 
-    lines     = convert_points_to_line(container)
+    lines     = convert_points_to_line(container, line_fit=line_fit)
 
     if len(lines) > 0:
         _,_,lines = reduce_lines(lines, extent=extent, dem_shape=dem.shape, min_dist=min_dist, seg_len=seg_len)
@@ -765,7 +789,9 @@ def dem_to_shp(im_path,
                 shp_name = None,
                 save_to_file=True,
 
-                keep_intermediate_file = False):
+                keep_intermediate_file = False,
+                n_jobs = -1,
+                line_fit = 'ols'):
     """
     Extract lineaments from a (large) DEM and export results as a shapefile. 
     This will involve image splitting, and the use of parallel computing to achieve calculation efficiency.
@@ -796,6 +822,10 @@ def dem_to_shp(im_path,
         Whether to save shapefile to disk (default is True).
     keep_intermediate_file : bool, optional
         Retain temporary files (default is False).
+    n_jobs : int, optional
+        Number of parallel worker processes passed to joblib (default is -1, all cores).
+    line_fit : {'ols', 'pca'}, optional
+        Line-fitting method (default 'ols'); see convert_points_to_line.
 
     Returns
     -------
@@ -826,10 +856,11 @@ def dem_to_shp(im_path,
                              [seg_len]*len(flist), 
                              [z_multip]*len(flist),
                              [downscale]*len(flist),
-                             [True]*len(flist))).values
+                             [True]*len(flist),
+                             [line_fit]*len(flist))).values
 
     from joblib import Parallel, delayed
-    Parallel(n_jobs=-1)(delayed(dem_to_line)(*c) for c in cases)
+    Parallel(n_jobs=n_jobs)(delayed(dem_to_line)(*c) for c in cases)
 
     fname = im_path.split('\\')[-1].split('.')[0]
     csv_name  = f'{tempfolder}\\{fname}.csv'
@@ -863,7 +894,8 @@ def dem_to_shp_small(im_path,
                      z_multip=1,
                      downscale=1,
                      shp_name=None, 
-                     save_to_file=True):
+                     save_to_file=True,
+                     line_fit='ols'):
     
     """
     Extract lineaments from a (small) DEM and export results as a shapefile. 
@@ -917,7 +949,8 @@ def dem_to_shp_small(im_path,
                                                                               seg_len=seg_len,
                                                                               z_multip=z_multip,
                                                                               downscale=downscale,
-                                                                              save_csv=True)
+                                                                              save_csv=True,
+                                                                              line_fit=line_fit)
     
     fname = im_path.split('\\')[-1].split('.')[0]
     csv_name  = f'{tempfolder}\\{fname}.csv'

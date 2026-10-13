@@ -4,7 +4,7 @@ pylineament Documentation
 pylineament is a Python-based open-source toolkit for automatic and regional-scale lineament extraction
 from remote sensing and DEM data.
 
-.. image:: https://img.shields.io/badge/version-1.0.0-blue.svg
+.. image:: https://img.shields.io/badge/version-1.1.0-blue.svg
    :target: https://pypi.org/project/pylineament/
 
 Features

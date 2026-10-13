@@ -4,8 +4,6 @@
 
 It is designed for geological and geomorphological analysis — providing a **fully automated, reproducible**, and **scalable** workflow for extracting, reducing, and mapping lineaments across local to regional scales.
 
-![alt text](https://github.com/epokus/pylineament/blob/main/example/lienament_extracted.png?raw=true)
-
 ---
 
 ## Installation
@@ -25,21 +23,49 @@ pip install -e .
 
 Once installed, simply open your terminal or command prompt and run:
 
-
 ```bash
 pylineament
 ```
-it will appear UI like this:
 
-![alt text](https://github.com/epokus/pylineament/blob/main/example/pylineament_ui_image.png?raw=true)
+## Graphical interface
 
-alternatively, you can download exe in this link:
-[download exe](https://drive.google.com/drive/folders/1HF11vDgf2SXvgOYosO-1e7RzLCq0QFGL?usp=sharing)
+Run `pylineament` (or `python -m pylineament.gui`) to open the GUI:
 
-[![Download](https://img.shields.io/badge/Download-Latest%20Release-brightgreen?style=for-the-badge)](https://drive.google.com/drive/folders/1HF11vDgf2SXvgOYosO-1e7RzLCq0QFGL?usp=sharing)
+1. **Open** a DEM (GeoTIFF; JPEG/PNG also work in pixel coordinates). The *Overview* tab shows the
+   hillshade and the tile grid.
+2. **Click a tile** to preview it. The *Tile preview* tab shows the hillshade the algorithm sees,
+   the edge points, fitted lines and final lines. The preview recomputes when a parameter changes,
+   and a banner reminds you when it is out of date.
+3. **Run extraction** (Ctrl+R) to process all tiles in parallel and write a shapefile. Progress,
+   ETA and Cancel are in the status bar. The parameters are saved next to the shapefile as
+   `<name>_params.json`.
+4. The *Results* tab shows counts, lengths, a rose diagram and a length histogram.
+
+The *Style* tab sets colours and widths of every layer, and the *How to use* tab (F1) explains
+each parameter. *Parameters > Copy as Python* gives the equivalent `dem_to_shp(...)` call; the GUI
+and the Python API produce identical lineaments.
+
+## Windows executable
+
+A standalone executable (no Python needed) is built with PyInstaller:
+
+```bash
+pip install -e .[dev] pyinstaller
+pyinstaller pylineament.spec          # -> dist/pylineament-<version>.exe
+dist/pylineament-<version>.exe --self-test example/e_kal_crop2.tif selftest_out
+```
+
+The self-test runs a preview and a full extraction headless and writes `selftest_out/self_test.json`.
+
+## Tests
+
+```bash
+pip install -e .[dev]
+python -m pytest tests
+```
 
 ## Key Features
-- Interactive UI — Run `pylineament` in the terminal to open the GUI.
+- Interactive UI — Run `pylineament` (or `python -m pylineament.gui`) to open the GUI: tile grid overview, live per-tile preview of edge points and fitted lines, parallel full extraction with progress and cancel, rose diagram and length statistics, and parameter save/load.
 - Automated Workflow — Full end-to-end lineament extraction.
 - Customizable Parameters — Control edge detection thresholds, segment length, and merging distance.
 - Multi-Resolution Support — Works with various DEM/image resolutions.
@@ -60,11 +86,10 @@ alternatively, you can download exe in this link:
 
 ## Example Workflow
 - Input your DEM or satellite image.
-- Optionally apply `hillshade()` or downscale for efficiency.
-- Extract edge points using `extract_lineament_points()`.
-- Convert points to lines and merge them with `reduce_lines()`.
-- Save as shapefile using `dem_to_shp()` or `dem_to_shp_small()`.
-- more workflow are presented in `example` folder
+- Optionally apply hillshade() or downscale for efficiency.
+- Extract edge points using extract_lineament_points().
+- Convert points to lines and merge them with reduce_lines().
+- Save as shapefile using dem_to_shp() or merge_lines_csv_to_shp().
 
 ## example how to use this Library with CLI or python
 
@@ -88,6 +113,7 @@ see more examples in example folder
 | `split_size` | DEM/image tile size for processing    | 250 – 1000 pixels |
 
 
+
 ## Why PyLineament?
 Typical “automatic” lineament extraction tools are limited by:
 - Fixed image resolution and poor scalability,
@@ -104,15 +130,9 @@ Typical “automatic” lineament extraction tools are limited by:
 ## Citation
 If you use PyLineament in your research, please cite:
 Prasetya Kusumah, E. (2025). PyLineament: A Python Toolkit for Regional-Scale Lineament Extraction. 
-Version 1.0. https://github.com/epokus/pylineament
+Version 1.1.0. https://github.com/epokus/pylineament
 
 ## License
 This project is licensed under the MIT License — see the LICENSE
  file for details.
-
-
-
-
-
-
 
