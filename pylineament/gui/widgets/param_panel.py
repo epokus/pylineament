@@ -71,7 +71,8 @@ class ParamPanel(QWidget):
         for key, text in LINE_FITS.items():
             self.line_fit.addItem(text, key)
         tip = ('How a straight line is fitted to each cluster of edge points. OLS (default, '
-               'v1.0.1) regresses row on column and biases azimuths towards E-W; PCA fits the '
+               'v1.0.1) regresses row on column and biases azimuths towards E-W; TLS (total least '
+               'squares) fits the '
                'principal axis and is orientation-independent.')
         self.line_fit.setToolTip(tip)
         self.line_fit.currentIndexChanged.connect(lambda _i: self._emit('line_fit'))

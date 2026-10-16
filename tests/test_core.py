@@ -28,7 +28,7 @@ def test_param_defaults_match_library():
 
 
 def test_param_json_roundtrip(tmp_path):
-    p = Params(eps=2.5, thresh=12, line_fit='pca', n_jobs=2)
+    p = Params(eps=2.5, thresh=12, line_fit='tls', n_jobs=2)
     f = tmp_path / 'p.json'
     p.save(f)
     assert Params.load(f) == p
@@ -42,9 +42,9 @@ def test_param_validation(bad):
 
 
 def test_param_to_python_is_valid():
-    code = Params(line_fit='pca').to_python(r'C:\data\dem.tif', 'out.shp')
+    code = Params(line_fit='tls').to_python(r'C:\data\dem.tif', 'out.shp')
     compile(code, '<params>', 'exec')
-    assert "line_fit='pca'" in code
+    assert "line_fit='tls'" in code
 
 
 # ---------------------------------------------------------------- raster
@@ -104,7 +104,7 @@ def test_preview_equals_dem_to_line(dem_path, tmp_path):
 
 # ---------------------------------------------------------------- full run
 
-@pytest.mark.parametrize('line_fit, azimuths', [('ols', 6), ('pca', 6), ('ols', 12)])
+@pytest.mark.parametrize('line_fit, azimuths', [('ols', 6), ('tls', 6), ('ols', 12)])
 def test_run_matches_dem_to_shp(dem_path, tmp_path, monkeypatch, line_fit, azimuths):
     p = Params(line_fit=line_fit, azimuths=azimuths, n_jobs=4)
     res = pipeline.run_extraction(dem_path, p.to_dict())
@@ -203,3 +203,18 @@ def test_azimuths_param_validation():
         Params.from_dict(Params().to_dict() | {'azimuths': 8})
     assert Params.from_dict(Params().to_dict() | {'azimuths': '12'}).azimuths == 12
     assert 'azimuths=[0, 30, 60, 90, 120, 150]' in Params().to_python()
+
+
+# ---------------------------------------------------------------- line fit names
+
+def test_tls_name_and_pca_alias(dem_path):
+    _, dem, _, _ = ln.read_raster(dem_path)
+    c, _, _ = ln.extract_lineament_points(dem[:300, :300])
+    tls = ln.convert_points_to_line(c, line_fit='tls')
+    pca = ln.convert_points_to_line(c, line_fit='pca')       # old name, same method
+    ols = ln.convert_points_to_line(c, line_fit='ols')
+    assert len(tls) > 0 and tls.equals(pca) and not tls.equals(ols)
+    with pytest.raises(ValueError):
+        ln.convert_points_to_line(c, line_fit='principal')
+    # saved GUI parameter files with the old name still load
+    assert Params.from_dict(Params().to_dict() | {'line_fit': 'pca'}).line_fit == 'tls'

@@ -111,7 +111,7 @@ see more examples in example folder
 | `min_dist`   | Minimum distance between merged lines | 5 – 20 pixels     |
 | `seg_len`    | Minimum segment length                | 5 – 20 pixels     |
 | `split_size` | DEM/image tile size for processing    | 250 – 1000 pixels |
-| `line_fit`   | Line fitting: `'ols'` (v1.0.1) or `'pca'` (orientation-unbiased) | `'ols'`, `'pca'` |
+| `line_fit`   | Line fitting: `'ols'` ordinary least squares (v1.0.1) or `'tls'` total least squares (perpendicular distances, orientation-unbiased) | `'ols'`, `'tls'` |
 | `azimuths`   | Hillshade azimuths (degrees). Default 0–150° step 30°: at altitude 0, azimuths 180° apart give identical edges, so 6 cover every direction and run ~2× faster than v1.0.1's 12. Use `ln.LEGACY_AZIMUTHS` (0–330°) to reproduce v1.0.1 results exactly | `ln.DEFAULT_AZIMUTHS` |
 
 

@@ -48,8 +48,8 @@ def azimuth_list(n):
 
 
 LINE_FITS = {
-    'ols': 'OLS (v1.0.1 behaviour)',
-    'pca': 'PCA / total least squares (orientation-unbiased)',
+    'ols': 'OLS – ordinary least squares (v1.0.1)',
+    'tls': 'TLS – total least squares (orientation-unbiased)',
 }
 
 
@@ -100,6 +100,8 @@ class Params:
                 setattr(p, name, int(getattr(p, name)))
             else:
                 setattr(p, name, float(getattr(p, name)))
+        if p.line_fit == 'pca':  # name used during development of 1.1.0
+            p.line_fit = 'tls'
         if isinstance(p.azimuths, (int, float, str)) and str(p.azimuths).isdigit():
             p.azimuths = int(p.azimuths)
         return p.validate()

@@ -23,7 +23,7 @@ def _param_table():
                     f'<td>{getattr(d, name)}</td><td>{lo} – {hi}</td><td>{tip}</td></tr>')
     fits = '; '.join(f'<code>{k}</code>: {v}' for k, v in LINE_FITS.items())
     rows.append(f'<tr><td><b>Line fit</b><br><code>line_fit</code></td><td>{d.line_fit}</td>'
-                f'<td>ols, pca</td><td>{fits}</td></tr>')
+                f'<td>ols, tls</td><td>{fits}</td></tr>')
     sets = '; '.join(f'<b>{n}</b>: {label}' for n, (_, label) in AZIMUTH_SETS.items())
     rows.append(f'<tr><td><b>Azimuths</b><br><code>azimuths</code></td><td>{d.azimuths}</td>'
                 f'<td>6, 12</td><td>Hillshade illumination directions ({sets}). With the light at '
@@ -101,7 +101,8 @@ preview. <i>Parameters &gt; Copy as Python</i> copies the equivalent
  <li><b>Too few lines</b>: lower <i>Min cluster size</i>, raise <i>Z multiplier</i> in flat
      terrain, or raise <i>DBSCAN eps</i> to join gaps between edge pixels.</li>
  <li><b>Lines broken into pieces</b>: raise <i>Merge distance</i> and <i>Segment length</i>.</li>
- <li><b>Orientation statistics</b>: use <i>Line fit = PCA</i>. OLS (the v1.0.1 default) biases
+ <li><b>Orientation statistics</b>: use <i>Line fit = TLS</i> (total least squares: perpendicular instead of vertical
+     distances). OLS (the v1.0.1 default) biases
      azimuths towards E–W.</li>
  <li><b>Slow preview</b>: a smaller <i>Tile size</i> or a lower <i>Resample factor</i> previews much
      faster. The window stays usable while a preview is computing.</li>

@@ -315,10 +315,12 @@ def convert_points_to_line(container, line_fit='ols'):
     ----------
     container : list
         Extracted lineament points grouped by proximity.
-    line_fit : {'ols', 'pca'}, optional
-        'ols' (default, behaviour of v1.0.1) regresses row on column, which pulls
-        steep (N-S) clusters towards E-W. 'pca' fits the principal axis of each
-        cluster (total least squares) and is orientation-independent.
+    line_fit : {'ols', 'tls'}, optional
+        'ols' (default, behaviour of v1.0.1): ordinary least squares, regresses row on
+        column (vertical distances), which pulls steep (N-S) clusters towards E-W.
+        'tls': total least squares (orthogonal regression), fits the principal axis of
+        each cluster (perpendicular distances) and is orientation-independent.
+        'pca' is accepted as an older name for 'tls'.
 
     Returns
     -------
@@ -327,6 +329,11 @@ def convert_points_to_line(container, line_fit='ols'):
     """
 
     from sklearn.linear_model import LinearRegression
+
+    if line_fit == 'pca':  # name used during development of 1.1.0
+        line_fit = 'tls'
+    if line_fit not in ('ols', 'tls'):
+        raise ValueError(f"line_fit must be 'ols' or 'tls', got {line_fit!r}")
 
     if len(container)>0:
         linea = pd.concat(container)
@@ -343,7 +350,7 @@ def convert_points_to_line(container, line_fit='ols'):
                 if len(temp) == 0:
                     continue
 
-                if line_fit == 'pca':
+                if line_fit == 'tls':
                     xy = temp[['X', 'Y']].values.astype(float)
                     centre = xy.mean(axis=0)
                     _, vecs = np.linalg.eigh(np.cov((xy - centre).T))
@@ -740,7 +747,7 @@ def dem_to_line(path,
         DEM downscaling factor (default is 1.0).
     save_csv : bool, optional
         Save intermediate line data to CSV (default is False).
-    line_fit : {'ols', 'pca'}, optional
+    line_fit : {'ols', 'tls'}, optional
         Line-fitting method passed to convert_points_to_line (default 'ols').
     azimuths : sequence of float, optional
         Hillshade azimuths passed to extract_lineament_points (default 0-150 step 30).
@@ -838,7 +845,7 @@ def dem_to_shp(im_path,
         Retain temporary files (default is False).
     n_jobs : int, optional
         Number of parallel worker processes passed to joblib (default is -1, all cores).
-    line_fit : {'ols', 'pca'}, optional
+    line_fit : {'ols', 'tls'}, optional
         Line-fitting method (default 'ols'); see convert_points_to_line.
     azimuths : sequence of float, optional
         Hillshade azimuths (default 0-150 step 30); see extract_lineament_points.
