@@ -4,8 +4,8 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ..style import default_style
-from .common import (MapPlot, display_hillshade, make_pen, path_item, rects_path, robust_levels,
-                     segments_path)
+from .common import (MapPlot, colorize, display_hillshade, make_pen, palette_lut, palette_pixmap,
+                     path_item, rects_path, segments_path)
 
 MAX_LABELS = 400
 
@@ -21,10 +21,22 @@ class MapView(QWidget):
         self.raster = None
         self._labels = []
         self._bg_cache = {}
+        self._topo = default_style()['topo']
 
         self.background = QComboBox()
-        self.background.addItems(['Hillshade', 'Elevation'])
+        self.background.addItems(['Hillshade', 'Elevation', 'Elevation + hillshade'])
+        self.background.setCurrentText('Elevation + hillshade')
+        self.background.setToolTip('Palette, elevation range and hillshade opacity are set in the '
+                                   'Style tab (Topography).')
         self.background.currentIndexChanged.connect(self._draw_background)
+        self.legend_bar = QLabel()
+        self.legend_text = QLabel()
+        self.legend = QWidget()
+        ll = QHBoxLayout(self.legend)
+        ll.setContentsMargins(0, 0, 0, 0)
+        ll.addWidget(self.legend_bar)
+        ll.addWidget(self.legend_text)
+        self.legend.setVisible(False)
         self.show_grid = QCheckBox('Tile grid')
         self.show_grid.setChecked(True)
         self.show_grid.toggled.connect(self._toggle_grid)
@@ -46,6 +58,7 @@ class MapView(QWidget):
         bar = QHBoxLayout()
         bar.addWidget(QLabel('Background'))
         bar.addWidget(self.background)
+        bar.addWidget(self.legend)
         bar.addSpacing(12)
         bar.addWidget(self.show_grid)
         bar.addWidget(self.show_preview)
@@ -90,23 +103,29 @@ class MapView(QWidget):
         self._draw_background()
         self.plot.autoRange()
 
+    def _hillshade(self):
+        if 'hs' not in self._bg_cache:
+            self._bg_cache['hs'] = display_hillshade(self.raster.display, 315, 45, 1.0)
+        return self._bg_cache['hs']
+
     def _draw_background(self):
+        mode = self.background.currentText()
+        elevation = mode != 'Hillshade'
+        self.legend.setVisible(elevation and self.raster is not None)
         if self.raster is None:
             return
-        mode = self.background.currentText()
-        if mode not in self._bg_cache:
-            d = self.raster.display
-            if mode == 'Hillshade':
-                img = display_hillshade(d, 315, 45, 1.0)
-                lut = None
-                levels = (0.0, 255.0)
-            else:
-                img = d
-                lut = pg.colormap.get('viridis').getLookupTable(nPts=256)
-                levels = robust_levels(d)
-            self._bg_cache[mode] = (img, levels, lut)
-        img, levels, lut = self._bg_cache[mode]
-        self.plot.set_image(img, self.raster.map_rect(), levels=levels, lut=lut)
+        t = self._topo
+        if not elevation:
+            self.plot.set_image(self._hillshade(), self.raster.map_rect(), levels=(0.0, 255.0))
+        else:
+            lut = palette_lut(t['palette'], t['reverse'])
+            shade = self._hillshade() if mode == 'Elevation + hillshade' else None
+            rgba = colorize(self.raster.display, t['vmin'], t['vmax'], lut, shade, t['hs_opacity'])
+            self.plot.set_image(rgba, self.raster.map_rect())
+            unit = 'm' if self.raster.georeferenced else ''
+            self.legend_bar.setPixmap(palette_pixmap(t['palette'], t['reverse'], 120, 12))
+            self.legend_text.setText(f"{t['vmin']:.6g} – {t['vmax']:.6g} {unit}")
+        self.plot.viewport().update()
 
     # ------------------------------------------------------------------- grid
     def set_tiles(self, tiles):
@@ -167,6 +186,9 @@ class MapView(QWidget):
         self.selected.setPen(make_pen(style['selected']))
         self.lines.setPen(make_pen(style['result']))
         self.preview_lines.setPen(make_pen(style['preview_overview']))
+        if style['topo'] != self._topo:
+            self._topo = dict(style['topo'])
+            self._draw_background()
         self.plot.viewport().update()
 
 

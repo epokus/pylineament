@@ -42,8 +42,9 @@ def wait_preview(qtbot, win, timeout=120_000):
 
 def test_open_preview_run(qtbot, win, dem_path, tmp_path, monkeypatch):
     shot(win, '00_empty')
+    win.open_raster(dem_path)
     with qtbot.waitSignal(win.preview_runner.finished, timeout=180_000) as blocker:
-        win.open_raster(dem_path)
+        win.request_preview()
     res = blocker.args[1]
     assert win.raster is not None and len(win.tiles) == 6
     assert res['tile'].n == win.tile.n and res['n_final'] > 0
@@ -54,8 +55,7 @@ def test_open_preview_run(qtbot, win, dem_path, tmp_path, monkeypatch):
     shot(win, '02_preview')
 
     # changing the tile size updates the grid and re-previews
-    with qtbot.waitSignal(win.preview_runner.finished, timeout=180_000):
-        win.params_panel._editors['split_size'].setValue(300)
+    win.params_panel._editors['split_size'].setValue(300)
     assert len(win.tiles) == len(win.raster.tiles(300)) == 12
 
     # full run with the save dialog answered automatically
@@ -74,16 +74,14 @@ def test_open_preview_run(qtbot, win, dem_path, tmp_path, monkeypatch):
 
 
 def test_cancelled_save_dialog_does_nothing(qtbot, win, small_dem_path, monkeypatch):
-    with qtbot.waitSignal(win.preview_runner.finished, timeout=180_000):
-        win.open_raster(small_dem_path)
+    win.open_raster(small_dem_path)
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: ('', ''))
     win.run_extraction()
     assert not win.runner.running
 
 
 def test_cancel_run(qtbot, win, dem_path, tmp_path, monkeypatch):
-    with qtbot.waitSignal(win.preview_runner.finished, timeout=180_000):
-        win.open_raster(dem_path)
+    win.open_raster(dem_path)
     win.params_panel._editors['split_size'].setValue(150)
     out = str(tmp_path / 'c.shp')
     monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (out, ''))
@@ -106,8 +104,9 @@ def test_bad_file_shows_error(qtbot, win, tmp_path, monkeypatch):
 
 def test_non_georeferenced_image(qtbot, win):
     jpeg = os.path.join(os.path.dirname(__file__), '..', 'example', 'sedstrat.jpeg')
+    win.open_raster(jpeg)
     with qtbot.waitSignal(win.preview_runner.finished, timeout=180_000) as blocker:
-        win.open_raster(jpeg)
+        win.request_preview()
     assert not win.raster.georeferenced
     x, y, w, h = win.raster.tile_rect(win.tile)
     pts = [xy for _, xy in blocker.args[1]['points']]
@@ -271,5 +270,107 @@ def test_stale_preview_reminder_auto(qtbot, win, small_dem_path, preview_result)
     assert not win.preview.stale_banner.isHidden()
     with qtbot.waitSignal(win.preview_runner.finished, timeout=180_000):
         win.preview.auto.setChecked(True)               # re-enabling refreshes at once
-        assert 'recomputed' in win.preview.stale_text.text()
+        assert 'Computing' in win.preview.stale_text.text()
     assert win.preview.stale_banner.isHidden()
+
+
+# ------------------------------------------------------------------ feedback round 3
+
+def test_open_does_not_extract(qtbot, win, dem_path):
+    assert not win.preview.auto.isChecked()            # auto preview off by default
+    win.open_raster(dem_path)
+    qtbot.wait(300)
+    assert not win.preview_runner.busy and not win._preview_timer.isActive()
+    assert win.preview.result is None
+    assert not win.preview.stale_banner.isHidden()
+    assert 'No preview yet' in win.preview.stale_text.text()
+    # selecting another tile does not extract either
+    win.preview.tile.setCurrentIndex(3)
+    qtbot.wait(300)
+    assert not win.preview_runner.busy
+
+
+def test_banner_names_other_tile(qtbot, win, dem_path, preview_result):
+    loaded(win, dem_path, preview_result)               # preview of tile 0 of the small DEM
+    win.preview.tile.setCurrentIndex(4)
+    assert 'tile 4' in win.preview.stale_text.text()
+
+
+def test_topography_range_and_palette(qtbot, win, dem_path):
+    import numpy as np
+    win.open_raster(dem_path)
+    t = win.style_panel.current_style()['topo']
+    v = win.raster.display[np.isfinite(win.raster.display)]
+    lo, hi = np.percentile(v, [2, 98])
+    assert abs(t['vmin'] - lo) < 0.01 and abs(t['vmax'] - hi) < 0.01
+    m = win.map
+    assert m.background.currentText() == 'Elevation + hillshade' and m.legend.isVisible()
+    img1 = m.plot.image.image.copy()
+    assert img1.ndim == 3 and img1.shape[2] == 4
+    sp = win.style_panel
+    sp.palette.setCurrentIndex(sp.palette.findData('viridis'))
+    img2 = m.plot.image.image.copy()
+    assert not np.array_equal(img1, img2)
+    # min/max: full range and manual values
+    sp.range_requested.emit('full')
+    t = sp.current_style()['topo']
+    assert abs(t['vmin'] - v.min()) < 0.01 and abs(t['vmax'] - v.max()) < 0.01
+    sp.vmax.setValue(t['vmin'] - 5)                   # invalid range is corrected
+    t = sp.current_style()['topo']
+    assert t['vmax'] > t['vmin']
+    # overlay strength changes the shaded background, not the plain elevation one
+    sp.hs_opacity.setValue(0.0)
+    shaded0 = m.plot.image.image.copy()
+    m.background.setCurrentText('Elevation')
+    assert np.array_equal(m.plot.image.image, shaded0)
+    m.background.setCurrentText('Hillshade')
+    assert m.plot.image.image.ndim == 2 and not m.legend.isVisible()
+
+
+def test_preview_dem_backgrounds(qtbot, win, small_dem_path, preview_result):
+    loaded(win, small_dem_path, preview_result)
+    pv = win.preview
+    for name in ('Tile DEM', 'Tile DEM + hillshade'):
+        pv.background.setCurrentText(name)
+        assert pv.plot.image.image.ndim == 3
+    before = pv.plot.image.image.copy()
+    win.style_panel.reverse.setChecked(True)
+    assert not (pv.plot.image.image == before).all()
+
+
+def test_no_stray_busy_badge(win):
+    assert not win.preview.busy.isVisible()
+
+
+@pytest.mark.parametrize('name, keys, expected', [
+    ('eps', '2.5', 2.5), ('z_multip', '3', 3.0), ('downscale', '0.5', 0.5),
+    ('thresh', '55', 55), ('n_jobs', '4', 4), ('split_size', '300', 300)])
+def test_click_and_type_replaces_value(qtbot, win, name, keys, expected):
+    from PyQt5.QtCore import QPoint, Qt
+    ed = win.params_panel._editors[name]
+    le = ed.lineEdit()
+    qtbot.mouseClick(le, Qt.LeftButton, pos=QPoint(le.width() - 3, le.height() // 2))
+    qtbot.wait(30)
+    qtbot.keyClicks(le, keys)
+    qtbot.keyClick(le, Qt.Key_Return)
+    assert ed.value() == expected
+
+
+def test_decimal_point_independent_of_region(win):
+    ed = win.params_panel._editors['eps']
+    assert ed.locale().decimalPoint() == '.'
+    assert ed.textFromValue(1.25) == '1.2500'
+
+
+
+def test_azimuths_parameter_in_gui(qtbot, win, small_dem_path, preview_result):
+    loaded(win, small_dem_path, preview_result)
+    pp = win.params_panel
+    assert pp.params().azimuths == 6
+    assert win.preview.azimuth.count() == 6 and preview_result['azimuths'] == [0, 30, 60, 90, 120, 150]
+    pp.azimuths.setCurrentIndex(pp.azimuths.findData(12))
+    assert pp.params().azimuths == 12
+    assert not win.preview.stale_banner.isHidden()      # azimuths change the preview
+    twelve = dict(preview_result, azimuths=list(range(0, 360, 30)))
+    win._preview_done(5, twelve)
+    assert win.preview.azimuth.count() == 12

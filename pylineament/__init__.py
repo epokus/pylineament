@@ -10,8 +10,9 @@ from .pylineament import (
     raster_resize,
     dem_to_line,
     dem_to_shp,
-    dem_to_shp_small
-
+    dem_to_shp_small,
+    DEFAULT_AZIMUTHS,
+    LEGACY_AZIMUTHS,
 )
 
 __all__ = [
@@ -26,5 +27,7 @@ __all__ = [
     "raster_resize",
     "dem_to_line",
     "dem_to_shp",
-    "dem_to_shp_small"
+    "dem_to_shp_small",
+    "DEFAULT_AZIMUTHS",
+    "LEGACY_AZIMUTHS",
 ]

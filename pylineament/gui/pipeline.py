@@ -20,6 +20,7 @@ import rasterio
 from rasterio.errors import NotGeoreferencedWarning
 from rasterio.windows import Window
 
+from pylineament.gui.params import azimuth_list
 from pylineament.pylineament import (
     read_raster, raster_resize, extract_lineament_points, convert_points_to_line,
     reduce_lines, image_splitting, dem_to_line, merge_lines_csv_to_shp,
@@ -85,8 +86,9 @@ def preview_tile(src, tile, params, workdir):
         os.remove(path)
 
     dem = raster_resize(dem, factor=params['downscale'])
+    azimuths = azimuth_list(params.get('azimuths', 6))
     container, _, _ = extract_lineament_points(dem, eps=params['eps'], thresh=params['thresh'],
-                                               z_multip=params['z_multip'])
+                                               z_multip=params['z_multip'], azimuths=azimuths)
     raw = convert_points_to_line(container, line_fit=params['line_fit'])
 
     final = pd.DataFrame(columns=LINE_COLUMNS[:-1])
@@ -120,6 +122,7 @@ def preview_tile(src, tile, params, workdir):
     xs, ys = pixel_to_map([0, dem.shape[1]], [0, dem.shape[0]], extent, dem.shape)
     return {
         'tile': tile,
+        'azimuths': azimuths,
         'dem': dem.astype('float32'),
         'rect': (float(min(xs)), float(min(ys)), float(abs(xs[1] - xs[0])), float(abs(ys[1] - ys[0]))),
         'row0_south': bool(ys[1] > ys[0]),
@@ -145,7 +148,8 @@ def run_tile(args):
     try:
         _, _, lines, *_ = dem_to_line(tile_path, tmpdir, params['eps'], params['thresh'],
                                       params['min_dist'], params['seg_len'], params['z_multip'],
-                                      params['downscale'], True, params['line_fit'])
+                                      params['downscale'], True, params['line_fit'],
+                                      azimuth_list(params.get('azimuths', 6)))
         return dict(tile=name, ok=True, n_lines=len(lines), seconds=time.perf_counter() - t0, error='')
     except Exception as e:
         if _is_empty_concat(e):

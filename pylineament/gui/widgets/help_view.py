@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QTextBrowser
 
-from ..params import LINE_FITS, SPECS, Params
+from ..params import AZIMUTH_SETS, LINE_FITS, SPECS, Params
 
 _CSS = """
 <style>
@@ -24,6 +24,12 @@ def _param_table():
     fits = '; '.join(f'<code>{k}</code>: {v}' for k, v in LINE_FITS.items())
     rows.append(f'<tr><td><b>Line fit</b><br><code>line_fit</code></td><td>{d.line_fit}</td>'
                 f'<td>ols, pca</td><td>{fits}</td></tr>')
+    sets = '; '.join(f'<b>{n}</b>: {label}' for n, (_, label) in AZIMUTH_SETS.items())
+    rows.append(f'<tr><td><b>Azimuths</b><br><code>azimuths</code></td><td>{d.azimuths}</td>'
+                f'<td>6, 12</td><td>Hillshade illumination directions ({sets}). With the light at '
+                'the horizon, az and az + 180° give identical edges, so 6 directions cover every '
+                'orientation. 12 reproduces v1.0.1; the results differ by about 0.1 % of the '
+                'lines.</td></tr>')
     return ('<table cellspacing="0" border="1" style="border-collapse:collapse">'
             '<tr><th>Parameter</th><th>Default</th><th>Range</th><th>Meaning</th></tr>'
             + ''.join(rows) + '</table>')
@@ -32,7 +38,8 @@ def _param_table():
 def help_html():
     return _CSS + f"""
 <h1>How to use Pylineament</h1>
-<p>Pylineament extracts geological lineaments from a DEM. It builds hillshades from 12 azimuths,
+<p>Pylineament extracts geological lineaments from a DEM. It builds hillshades lit from the horizon
+from 6 azimuths (0–150°; azimuths 180° apart give the same edges, so these cover every direction),
 detects edges with a Prewitt filter, clusters the edge pixels with DBSCAN, fits a straight line to
 each cluster and finally merges nearby segments.</p>
 
@@ -42,9 +49,11 @@ each cluster and finally merges nearby segments.</p>
      GeoTIFF onto the window. JPEG/PNG images also work (coordinates are then in pixels).</li>
  <li><b>Check the tile grid</b> on the <i>Overview</i> tab. The DEM is processed in square tiles
      (<i>Tile size</i>). Click a tile to preview it.</li>
- <li><b>Tune the parameters</b> on the <i>Tile preview</i> tab. With <i>Auto preview</i> on, the
-     preview recomputes half a second after you stop editing. Press <span class="key">F5</span>
-     to recompute manually.</li>
+ <li><b>Preview and tune</b> on the <i>Tile preview</i> tab. Nothing is extracted when a DEM is
+     opened: press <i>Preview</i> (<span class="key">F5</span>) to extract the lineaments of the
+     selected tile. A yellow banner reminds you when the preview is missing or out of date.
+     Tick <i>Auto preview</i> (off by default) to recompute automatically half a second after
+     each parameter change.</li>
  <li><b>Run the extraction</b>: <span class="key">Ctrl+R</span> or <i>Run extraction…</i>.
      Choose the output shapefile. All tiles are processed in parallel; you can cancel at any time
      with <span class="key">Esc</span>.</li>
@@ -55,14 +64,16 @@ each cluster and finally merges nearby segments.</p>
 
 <h2>The tabs</h2>
 <h3>Overview</h3>
-<p>The whole DEM as a hillshade or elevation map, the tile grid (the selected tile is outlined),
+<p>The whole DEM as a hillshade, an elevation map, or an elevation map shaded by the hillshade
+(<i>Elevation + hillshade</i>, the default), the tile grid (the selected tile is outlined),
 the <b>preview lines</b> of the last previewed tile and the <b>extracted lineaments</b> of the
 last full run. Each layer has a checkbox above the map. The status bar shows the coordinates,
 elevation and tile under the cursor.</p>
 <h3>Tile preview</h3>
 <p>Shows each processing step for one tile:</p>
 <ul>
- <li><b>Background</b>: the tile DEM, the hillshade the algorithm sees (altitude 0°) for the chosen
+ <li><b>Background</b>: the tile DEM (optionally shaded), the hillshade the algorithm sees
+     (altitude 0°) for the chosen
      <b>Azimuth</b>, its Prewitt edge magnitude, or the Prewitt cut-off (&gt; 100) that defines
      edge pixels.</li>
  <li><b>Edge points</b>: edge pixels that survived clustering, coloured by the azimuth that found
@@ -112,7 +123,13 @@ never give lines.</div>
 </ul>
 
 <h2>Styles</h2>
-<p>The <i>Style</i> tab on the left sets the colour (including transparency), width and dash style
+<p><b>Topography</b>: choose the elevation <i>palette</i> (Terrain, Hypsometric, Grey, Viridis,
+…, optionally reversed) and the <i>minimum</i> and <i>maximum</i> elevation it spans. The range is
+set to the 2–98 % percentiles of the DEM when a file is opened; <i>Auto</i> and <i>Full range</i>
+reset it. <i>Hillshade overlay</i> sets how strongly the hillshade shades the colours in the
+<i>Elevation + hillshade</i> backgrounds (0 = colour only, 1 = fully shaded). These settings only
+change the display, never the extraction.</p>
+<p>The <i>Style</i> tab on the left also sets the colour (including transparency), width and dash style
 of every line layer, and the symbol, size, opacity and colouring of the edge points. Styles are
 remembered between sessions.</p>
 """

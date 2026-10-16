@@ -102,9 +102,13 @@ class MapPlot(pg.PlotWidget):
 
     def set_image(self, arr, rect, levels=None, lut=None, row0_south=False):
         data = arr if row0_south else arr[::-1]
-        self.image.setImage(np.ascontiguousarray(data), autoLevels=False,
-                            levels=levels or robust_levels(data))
-        self.image.setLookupTable(lut)
+        if data.ndim == 3:  # RGBA image (already coloured)
+            self.image.setLookupTable(None)
+            self.image.setImage(np.ascontiguousarray(data), autoLevels=False, levels=(0, 255))
+        else:
+            self.image.setImage(np.ascontiguousarray(data), autoLevels=False,
+                                levels=levels or robust_levels(data))
+            self.image.setLookupTable(lut)
         self.image.setRect(QRectF(*rect))
 
     def _moved(self, pos):
@@ -116,3 +120,53 @@ class MapPlot(pg.PlotWidget):
         if ev.button() == 1 and not ev.double():
             p = self.plotItem.vb.mapSceneToView(ev.scenePos())
             self.clicked.emit(p.x(), p.y())
+
+
+# ------------------------------------------------------------------ elevation palettes
+_CUSTOM_PALETTES = {
+    # similar to matplotlib's "terrain" (no matplotlib dependency)
+    'terrain': [(0.0, (51, 51, 153)), (0.15, (0, 153, 255)), (0.25, (0, 204, 102)),
+                (0.5, (255, 255, 153)), (0.75, (128, 92, 84)), (1.0, (255, 255, 255))],
+    'hypsometric': [(0.0, (38, 115, 0)), (0.25, (152, 195, 76)), (0.45, (238, 222, 145)),
+                    (0.65, (196, 140, 75)), (0.85, (130, 87, 64)), (1.0, (245, 245, 245))],
+    'grey': [(0.0, (0, 0, 0)), (1.0, (255, 255, 255))],
+}
+
+
+def palette_lut(name, reverse=False, n=256):
+    """(n, 3) uint8 lookup table for an elevation palette."""
+    if name in _CUSTOM_PALETTES:
+        pos, cols = zip(*_CUSTOM_PALETTES[name])
+        cmap = pg.ColorMap(np.array(pos), np.array(cols, dtype=np.ubyte))
+    else:
+        cmap = pg.colormap.get(name)
+    lut = cmap.getLookupTable(0.0, 1.0, n, alpha=False).astype(np.uint8)
+    return lut[::-1].copy() if reverse else lut
+
+
+def colorize(dem, vmin, vmax, lut, hillshade_img=None, hs_opacity=0.0):
+    """RGBA uint8 image of the DEM through `lut`, optionally multiplied by a hillshade.
+
+    hs_opacity = 0 gives pure colour; 1 gives colour fully modulated by the hillshade.
+    NaN (nodata) cells are transparent.
+    """
+    d = np.asarray(dem, dtype='float32')
+    t = np.clip((d - vmin) / max(vmax - vmin, 1e-12), 0.0, 1.0)
+    idx = np.nan_to_num(t * (len(lut) - 1)).astype(np.int32)
+    rgb = lut[idx].astype('float32')
+    if hillshade_img is not None and hs_opacity > 0:
+        shade = np.nan_to_num(np.asarray(hillshade_img, dtype='float32') / 255.0, nan=1.0)
+        rgb *= ((1.0 - hs_opacity) + hs_opacity * shade)[..., None]
+    out = np.empty(d.shape + (4,), np.uint8)
+    out[..., :3] = np.clip(rgb, 0, 255)
+    out[..., 3] = np.where(np.isfinite(d), 255, 0)
+    return out
+
+
+def palette_pixmap(name, reverse=False, w=96, h=14):
+    """Small gradient swatch for palette selectors."""
+    from PyQt5.QtGui import QImage, QPixmap
+    lut = palette_lut(name, reverse, w)
+    img = np.ascontiguousarray(np.repeat(lut[None, :, :], h, axis=0))
+    qimg = QImage(img.data, w, h, 3 * w, QImage.Format_RGB888)
+    return QPixmap.fromImage(qimg.copy())

@@ -16,6 +16,11 @@ POINT_SYMBOLS = {'o': 'Circle', 's': 'Square', 't': 'Triangle', 'd': 'Diamond', 
                  'x': 'Cross'}
 POINT_MODES = {'azimuth': 'By azimuth', 'single': 'Single colour'}
 
+# elevation colour palettes: key -> label (custom ones are defined in widgets/common.py)
+PALETTES = {'terrain': 'Terrain', 'hypsometric': 'Hypsometric', 'grey': 'Grey',
+            'viridis': 'Viridis', 'cividis': 'Cividis', 'turbo': 'Turbo', 'inferno': 'Inferno',
+            'magma': 'Magma', 'plasma': 'Plasma'}
+
 # one colour per hillshade azimuth used by extract_lineament_points (0, 30, ..., 330 degrees)
 AZ_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
              '#e377c2', '#17becf', '#bcbd22', '#7f7f7f', '#aec7e8', '#ffbb78']
@@ -25,6 +30,9 @@ def default_style():
     s = {k: {'color': c, 'width': w, 'style': st} for k, (_, _, c, w, st) in LINE_LAYERS.items()}
     s['points'] = {'symbol': 'o', 'size': 3.0, 'opacity': 1.0, 'mode': 'azimuth',
                    'color': '#ffffff'}
+    # elevation display; vmin/vmax are reset to the 2-98 % range whenever a DEM is opened
+    s['topo'] = {'palette': 'terrain', 'reverse': False, 'vmin': 0.0, 'vmax': 1000.0,
+                 'hs_opacity': 0.6}
     return s
 
 
@@ -46,6 +54,12 @@ def merge_style(d):
             if spec['mode'] not in POINT_MODES:
                 spec['mode'] = 'azimuth'
             spec['opacity'] = min(1.0, max(0.0, spec['opacity']))
+        elif key == 'topo':
+            if spec['palette'] not in PALETTES:
+                spec['palette'] = 'terrain'
+            spec['hs_opacity'] = min(1.0, max(0.0, spec['hs_opacity']))
+            if spec['vmax'] <= spec['vmin']:
+                spec['vmax'] = spec['vmin'] + 1.0
         elif spec['style'] not in LINE_STYLES:
             spec['style'] = 'solid'
     return copy.deepcopy(s)

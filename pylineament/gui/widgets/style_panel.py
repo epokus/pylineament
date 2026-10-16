@@ -1,12 +1,14 @@
 import copy
 
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import (QColorDialog, QComboBox, QDoubleSpinBox, QFormLayout, QGridLayout,
-                             QGroupBox, QLabel, QPushButton, QVBoxLayout, QWidget)
+from PyQt5.QtCore import QSize, pyqtSignal
+from PyQt5.QtGui import QColor, QIcon
+from PyQt5.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFormLayout, QGridLayout,
+                             QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget)
 
-from ..style import (LINE_LAYERS, LINE_STYLES, POINT_MODES, POINT_SYMBOLS, default_style,
+from ..style import (LINE_LAYERS, LINE_STYLES, PALETTES, POINT_MODES, POINT_SYMBOLS, default_style,
                      merge_style)
+from .common import palette_pixmap
+from .spinbox import DoubleSpinBox
 
 
 class ColorButton(QPushButton):
@@ -43,12 +45,54 @@ class StylePanel(QWidget):
     """Colours, widths and symbols of every line and point layer."""
 
     changed = pyqtSignal(object)  # style dict
+    range_requested = pyqtSignal(str)  # 'auto' (2-98 %) or 'full' (min-max of the DEM)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._quiet = False
         self._style = default_style()
         self._rows = {}
+
+        topo_box = QGroupBox('Topography (elevation backgrounds)')
+        tf = QFormLayout(topo_box)
+        self.palette = QComboBox()
+        self.palette.setIconSize(QSize(96, 14))
+        for k, v in PALETTES.items():
+            self.palette.addItem(QIcon(palette_pixmap(k)), v, k)
+        self.reverse = QCheckBox('Reverse palette')
+        self.vmin = DoubleSpinBox()
+        self.vmax = DoubleSpinBox()
+        for sb in (self.vmin, self.vmax):
+            sb.setRange(-12000.0, 12000.0)
+            sb.setDecimals(2)
+            sb.setSingleStep(10.0)
+            sb.setKeyboardTracking(False)
+        auto = QPushButton('Auto (2–98 %)')
+        auto.setToolTip('Stretch the palette over the 2nd–98th percentile of the DEM')
+        auto.clicked.connect(lambda: self.range_requested.emit('auto'))
+        full = QPushButton('Full range')
+        full.setToolTip('Stretch the palette over the minimum–maximum of the DEM')
+        full.clicked.connect(lambda: self.range_requested.emit('full'))
+        range_buttons = QHBoxLayout()
+        range_buttons.addWidget(auto)
+        range_buttons.addWidget(full)
+        self.hs_opacity = DoubleSpinBox()
+        self.hs_opacity.setRange(0.0, 1.0)
+        self.hs_opacity.setSingleStep(0.05)
+        self.hs_opacity.setDecimals(2)
+        self.hs_opacity.setToolTip('Strength of the hillshade in the "Elevation + hillshade" and '
+                                   '"Tile DEM + hillshade" backgrounds (0 = colour only).')
+        self.palette.currentIndexChanged.connect(lambda _i: self._emit())
+        self.reverse.toggled.connect(lambda _v: self._emit())
+        self.vmin.valueChanged.connect(lambda _v: self._emit('vmin'))
+        self.vmax.valueChanged.connect(lambda _v: self._emit('vmax'))
+        self.hs_opacity.valueChanged.connect(lambda _v: self._emit())
+        tf.addRow('Palette', self.palette)
+        tf.addRow('', self.reverse)
+        tf.addRow('Minimum', self.vmin)
+        tf.addRow('Maximum', self.vmax)
+        tf.addRow('', range_buttons)
+        tf.addRow('Hillshade overlay', self.hs_opacity)
 
         lines_box = QGroupBox('Lines')
         grid = QGridLayout(lines_box)
@@ -59,7 +103,7 @@ class StylePanel(QWidget):
             lab = QLabel(f'{label}<br><span style="color:#888">{view}</span>')
             color = ColorButton()
             color.changed.connect(lambda _c: self._emit())
-            width = QDoubleSpinBox()
+            width = DoubleSpinBox()
             width.setRange(0.5, 10.0)
             width.setSingleStep(0.5)
             width.setDecimals(1)
@@ -76,11 +120,11 @@ class StylePanel(QWidget):
         self.symbol = QComboBox()
         for k, v in POINT_SYMBOLS.items():
             self.symbol.addItem(v, k)
-        self.size = QDoubleSpinBox()
+        self.size = DoubleSpinBox()
         self.size.setRange(1.0, 20.0)
         self.size.setSingleStep(0.5)
         self.size.setDecimals(1)
-        self.opacity = QDoubleSpinBox()
+        self.opacity = DoubleSpinBox()
         self.opacity.setRange(0.05, 1.0)
         self.opacity.setSingleStep(0.05)
         self.opacity.setDecimals(2)
@@ -103,6 +147,7 @@ class StylePanel(QWidget):
         reset.clicked.connect(lambda: self.set_style(default_style(), emit=True))
 
         lay = QVBoxLayout(self)
+        lay.addWidget(topo_box)
         lay.addWidget(lines_box)
         lay.addWidget(pts_box)
         lay.addWidget(reset)
@@ -128,12 +173,18 @@ class StylePanel(QWidget):
             self.mode.setCurrentIndex(self.mode.findData(p['mode']))
             self.point_color.set_color(p['color'])
             self.point_color.setEnabled(p['mode'] == 'single')
+            t = self._style['topo']
+            self.palette.setCurrentIndex(self.palette.findData(t['palette']))
+            self.reverse.setChecked(t['reverse'])
+            self.vmin.setValue(t['vmin'])
+            self.vmax.setValue(t['vmax'])
+            self.hs_opacity.setValue(t['hs_opacity'])
         finally:
             self._quiet = False
         if emit:
             self.changed.emit(self.current_style())
 
-    def _emit(self):
+    def _emit(self, source=None):
         if self._quiet:
             return
         for key, (color, width, st) in self._rows.items():
@@ -143,4 +194,25 @@ class StylePanel(QWidget):
                                  'opacity': self.opacity.value(), 'mode': self.mode.currentData(),
                                  'color': self.point_color.color()}
         self.point_color.setEnabled(self.mode.currentData() == 'single')
+        vmin, vmax = self.vmin.value(), self.vmax.value()
+        if vmax <= vmin:  # keep a valid range: push the other bound
+            self._quiet = True
+            if source == 'vmax':
+                vmin = vmax - 1.0
+                self.vmin.setValue(vmin)
+            else:
+                vmax = vmin + 1.0
+                self.vmax.setValue(vmax)
+            self._quiet = False
+        self._style['topo'] = {'palette': self.palette.currentData(),
+                               'reverse': self.reverse.isChecked(), 'vmin': vmin, 'vmax': vmax,
+                               'hs_opacity': self.hs_opacity.value()}
         self.changed.emit(self.current_style())
+
+    def set_topo_range(self, vmin, vmax):
+        """Set the elevation range (e.g. after opening a DEM) and emit the new style."""
+        self._quiet = True
+        self.vmin.setValue(vmin)
+        self.vmax.setValue(vmax)
+        self._quiet = False
+        self._emit()

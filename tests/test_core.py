@@ -24,6 +24,7 @@ def test_param_defaults_match_library():
     for name in ['eps', 'thresh', 'min_dist', 'seg_len', 'split_size', 'z_multip',
                  'downscale', 'line_fit']:
         assert getattr(p, name) == sig[name].default, name
+    assert p.tile_kwargs()['azimuths'] == list(sig['azimuths'].default) == [0, 30, 60, 90, 120, 150]
 
 
 def test_param_json_roundtrip(tmp_path):
@@ -103,9 +104,9 @@ def test_preview_equals_dem_to_line(dem_path, tmp_path):
 
 # ---------------------------------------------------------------- full run
 
-@pytest.mark.parametrize('line_fit', ['ols', 'pca'])
-def test_run_matches_dem_to_shp(dem_path, tmp_path, monkeypatch, line_fit):
-    p = Params(line_fit=line_fit, n_jobs=4)
+@pytest.mark.parametrize('line_fit, azimuths', [('ols', 6), ('pca', 6), ('ols', 12)])
+def test_run_matches_dem_to_shp(dem_path, tmp_path, monkeypatch, line_fit, azimuths):
+    p = Params(line_fit=line_fit, azimuths=azimuths, n_jobs=4)
     res = pipeline.run_extraction(dem_path, p.to_dict())
 
     monkeypatch.chdir(tmp_path)
@@ -171,3 +172,34 @@ def test_line_stats():
     assert np.allclose(az, [0, 45]) and np.allclose(length, [1, np.sqrt(2)])
     az, length = pipeline.line_stats(df, geographic=True)
     assert np.isclose(length[0], 111.2, atol=0.1)
+
+
+# ---------------------------------------------------------------- azimuths
+
+def test_six_azimuths_default_and_v101_reproduction(dem_path, tmp_path):
+    """6 azimuths (default) vs the 12 of v1.0.1 on the whole example DEM."""
+    t6 = pipeline.run_extraction(dem_path, Params(n_jobs=4).to_dict())
+    t12 = pipeline.run_extraction(dem_path, Params(azimuths=12, n_jobs=4).to_dict())
+    assert set(t6['lines']['quad']) <= set(range(6))
+    # v1.0.1 (12 azimuths, OLS, defaults) gave 2495 lines on this DEM
+    assert len(t12['lines']) == 2495
+    # dropping the duplicate half changes ~0.1 % of the lines
+    assert abs(len(t6['lines']) - len(t12['lines'])) <= 0.005 * len(t12['lines'])
+
+
+def test_azimuth_pairs_give_identical_edges(dem_path):
+    """The reason 6 azimuths suffice: at altitude 0, az and az + 180 mirror the hillshade."""
+    from skimage.filters import prewitt
+    _, dem, _, _ = ln.read_raster(dem_path)
+    dem = dem[:300, :300].astype(float)
+    for az in range(0, 180, 30):
+        a = prewitt(ln.hillshade(dem, az, 0, 1))
+        b = prewitt(ln.hillshade(dem, az + 180, 0, 1))
+        assert np.allclose(a, b, atol=1e-9)
+
+
+def test_azimuths_param_validation():
+    with pytest.raises(ValueError):
+        Params.from_dict(Params().to_dict() | {'azimuths': 8})
+    assert Params.from_dict(Params().to_dict() | {'azimuths': '12'}).azimuths == 12
+    assert 'azimuths=[0, 30, 60, 90, 120, 150]' in Params().to_python()

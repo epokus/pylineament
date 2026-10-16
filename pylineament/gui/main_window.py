@@ -2,6 +2,8 @@ import json
 import os
 import time
 
+import numpy as np
+
 from PyQt5.QtCore import QSettings, Qt, QTimer
 from PyQt5.QtGui import QIcon, QKeySequence
 from PyQt5.QtWidgets import (QAction, QApplication, QDockWidget, QFileDialog, QFormLayout,
@@ -98,6 +100,7 @@ class MainWindow(QMainWindow):
         ll.addStretch()
         self.style_panel = StylePanel()
         self.style_panel.changed.connect(self._style_changed)
+        self.style_panel.range_requested.connect(self._topo_range)
 
         self.side_tabs = QTabWidget()
         for widget, title in ((left, 'Setup'), (self.style_panel, 'Style')):
@@ -299,6 +302,7 @@ class MainWindow(QMainWindow):
         for k, v in raster.summary().items():
             self.info_labels[k].setText(v)
         self.map.set_raster(raster)
+        self._topo_range('auto')
         self._update_tiles(keep_center=False)
         self.tabs.setCurrentWidget(self.map)
         self.log.log(f'Opened {raster.path} ({raster.width} x {raster.height} px, '
@@ -306,7 +310,20 @@ class MainWindow(QMainWindow):
         if not raster.georeferenced:
             self.log.log('Image is not georeferenced: coordinates are pixels (y = -row).', 'warn')
         self._update_actions()
-        self._schedule_preview(immediate=True)
+        # no extraction on load: the user starts the first preview (or turns on Auto preview)
+        self._update_stale()
+
+    def _topo_range(self, mode):
+        """Elevation palette range from the DEM: 'auto' = 2-98 %, 'full' = min-max."""
+        if self.raster is None:
+            return
+        v = self.raster.display[np.isfinite(self.raster.display)]
+        if v.size == 0:
+            return
+        lo, hi = np.percentile(v, [2, 98]) if mode == 'auto' else (v.min(), v.max())
+        if hi <= lo:
+            hi = lo + 1.0
+        self.style_panel.set_topo_range(round(float(lo), 2), round(float(hi), 2))
 
     # =============================================================== tiles
     def _update_tiles(self, keep_center=True):
@@ -419,9 +436,19 @@ class MainWindow(QMainWindow):
 
     def _update_stale(self):
         """Remind the user when the displayed preview no longer matches tile + parameters."""
-        stale = self.preview.result is not None and self._shown_key != self._preview_key()
-        pending = bool(stale and (self.preview_runner.busy or self._preview_timer.isActive()))
-        self.preview.set_stale(stale, pending)
+        result = self.preview.result
+        stale = result is not None and self._shown_key != self._preview_key()
+        pending = self.preview_runner.busy or self._preview_timer.isActive()
+        if self.raster is None:
+            kind = None
+        elif result is None:
+            kind = 'none'
+        elif self.tile is not None and result['tile'].n != self.tile.n:
+            kind = 'tile'
+        else:
+            kind = 'stale' if stale else None
+        self.preview.set_banner(kind, pending, shown=result['tile'].n if result else None,
+                                current=self.tile.n if self.tile else None)
         self.map.set_preview_stale(stale)
         self.tabs.setTabText(self.tabs.indexOf(self.preview),
                              'Tile preview ●' if stale else 'Tile preview')

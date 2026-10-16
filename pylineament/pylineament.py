@@ -7,6 +7,12 @@ import pandas as pd
 import numpy as np
 import rasterio
 
+# Hillshade illumination azimuths (degrees). At altitude 0 the azimuths az and az + 180 give the
+# same Prewitt edge magnitude (the hillshade is mirrored, 255 - hs), so 0-150 covers every
+# direction. v1.0.1 used range(0, 360, 30); pass that as `azimuths` to reproduce its results.
+DEFAULT_AZIMUTHS = (0, 30, 60, 90, 120, 150)
+LEGACY_AZIMUTHS = tuple(range(0, 360, 30))
+
 
 def read_raster(im_path, split_size=500):
     """
@@ -213,7 +219,7 @@ def reduce_lines(lines, extent, dem_shape, min_dist=10, seg_len=10):
     return initial_lines, broken_lines_, reduced_lines
 
 
-def extract_lineament_points(dem, eps=1.2, thresh=40,z_multip=1):
+def extract_lineament_points(dem, eps=1.2, thresh=40,z_multip=1, azimuths=DEFAULT_AZIMUTHS):
     """
     Detect edge points representing potential lineaments from a DEM.
 
@@ -227,6 +233,9 @@ def extract_lineament_points(dem, eps=1.2, thresh=40,z_multip=1):
         Threshold for edge classification (default is 40).
     z_multip : float, optional
         Vertical exaggeration factor for slope computation (default is 1).
+    azimuths : sequence of float, optional
+        Hillshade azimuths in degrees (default DEFAULT_AZIMUTHS, 0-150 step 30). The point set
+        of azimuth number i is labelled quad = i. Use LEGACY_AZIMUTHS (0-330) for v1.0.1 results.
 
     Returns
     -------
@@ -250,7 +259,7 @@ def extract_lineament_points(dem, eps=1.2, thresh=40,z_multip=1):
     im_prewitt_clip = None
 
 
-    for num, deg in enumerate(range(0, 360, 30)):
+    for num, deg in enumerate(azimuths):
 
         im = prewitt(hillshade(dem, deg, 0,z_multip))
 
@@ -706,7 +715,8 @@ def dem_to_line(path,
                 z_multip=1.0,
                 downscale = 1.0,
                 save_csv = False,
-                line_fit = 'ols'):
+                line_fit = 'ols',
+                azimuths = DEFAULT_AZIMUTHS):
     """
     Extract lineaments directly from a DEM and return line features.
 
@@ -732,6 +742,8 @@ def dem_to_line(path,
         Save intermediate line data to CSV (default is False).
     line_fit : {'ols', 'pca'}, optional
         Line-fitting method passed to convert_points_to_line (default 'ols').
+    azimuths : sequence of float, optional
+        Hillshade azimuths passed to extract_lineament_points (default 0-150 step 30).
 
     Returns
     -------
@@ -759,7 +771,8 @@ def dem_to_line(path,
     container, im_prewitt, im_prewitt_clip = extract_lineament_points(dem, 
                                                                       eps=eps, 
                                                                       thresh=thresh,
-                                                                      z_multip=z_multip)
+                                                                      z_multip=z_multip,
+                                                                      azimuths=azimuths)
 
     lines     = convert_points_to_line(container, line_fit=line_fit)
 
@@ -791,7 +804,8 @@ def dem_to_shp(im_path,
 
                 keep_intermediate_file = False,
                 n_jobs = -1,
-                line_fit = 'ols'):
+                line_fit = 'ols',
+                azimuths = DEFAULT_AZIMUTHS):
     """
     Extract lineaments from a (large) DEM and export results as a shapefile. 
     This will involve image splitting, and the use of parallel computing to achieve calculation efficiency.
@@ -826,6 +840,8 @@ def dem_to_shp(im_path,
         Number of parallel worker processes passed to joblib (default is -1, all cores).
     line_fit : {'ols', 'pca'}, optional
         Line-fitting method (default 'ols'); see convert_points_to_line.
+    azimuths : sequence of float, optional
+        Hillshade azimuths (default 0-150 step 30); see extract_lineament_points.
 
     Returns
     -------
@@ -857,7 +873,8 @@ def dem_to_shp(im_path,
                              [z_multip]*len(flist),
                              [downscale]*len(flist),
                              [True]*len(flist),
-                             [line_fit]*len(flist))).values
+                             [line_fit]*len(flist),
+                             [tuple(azimuths)]*len(flist))).values
 
     from joblib import Parallel, delayed
     Parallel(n_jobs=n_jobs)(delayed(dem_to_line)(*c) for c in cases)
@@ -895,7 +912,8 @@ def dem_to_shp_small(im_path,
                      downscale=1,
                      shp_name=None, 
                      save_to_file=True,
-                     line_fit='ols'):
+                     line_fit='ols',
+                     azimuths=DEFAULT_AZIMUTHS):
     
     """
     Extract lineaments from a (small) DEM and export results as a shapefile. 
@@ -950,7 +968,8 @@ def dem_to_shp_small(im_path,
                                                                               z_multip=z_multip,
                                                                               downscale=downscale,
                                                                               save_csv=True,
-                                                                              line_fit=line_fit)
+                                                                              line_fit=line_fit,
+                                                                              azimuths=azimuths)
     
     fname = im_path.split('\\')[-1].split('.')[0]
     csv_name  = f'{tempfolder}\\{fname}.csv'

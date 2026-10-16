@@ -35,6 +35,18 @@ SPECS = {
                    'Number of processes used for the full extraction.'),
 }
 
+# number of hillshade azimuths -> (degrees, label). 6 is the default: az and az + 180 give the
+# same edges at altitude 0, so the second half of v1.0.1's 12 azimuths only repeated the first.
+AZIMUTH_SETS = {
+    6: ((0, 30, 60, 90, 120, 150), '6 (0–150°, ~2× faster)'),
+    12: (tuple(range(0, 360, 30)), '12 (0–330°, v1.0.1 behaviour)'),
+}
+
+
+def azimuth_list(n):
+    return list(AZIMUTH_SETS[int(n)][0])
+
+
 LINE_FITS = {
     'ols': 'OLS (v1.0.1 behaviour)',
     'pca': 'PCA / total least squares (orientation-unbiased)',
@@ -51,6 +63,7 @@ class Params:
     min_dist: int = 10
     seg_len: int = 10
     line_fit: str = 'ols'
+    azimuths: int = 6
     n_jobs: int = 0  # 0 means default_n_jobs()
     keep_intermediate: bool = False
 
@@ -68,6 +81,8 @@ class Params:
                 raise ValueError(f'{label} must be between {lo} and {hi}, got {v}')
         if self.line_fit not in LINE_FITS:
             raise ValueError(f'line_fit must be one of {list(LINE_FITS)}, got {self.line_fit!r}')
+        if self.azimuths not in AZIMUTH_SETS:
+            raise ValueError(f'azimuths must be one of {list(AZIMUTH_SETS)}, got {self.azimuths!r}')
         return self
 
     def to_dict(self):
@@ -85,6 +100,8 @@ class Params:
                 setattr(p, name, int(getattr(p, name)))
             else:
                 setattr(p, name, float(getattr(p, name)))
+        if isinstance(p.azimuths, (int, float, str)) and str(p.azimuths).isdigit():
+            p.azimuths = int(p.azimuths)
         return p.validate()
 
     def save(self, path):
@@ -102,7 +119,8 @@ class Params:
         """Keyword arguments shared by dem_to_line / dem_to_shp."""
         return dict(eps=self.eps, thresh=self.thresh, min_dist=self.min_dist,
                     seg_len=self.seg_len, z_multip=self.z_multip,
-                    downscale=self.downscale, line_fit=self.line_fit)
+                    downscale=self.downscale, line_fit=self.line_fit,
+                    azimuths=azimuth_list(self.azimuths))
 
     def to_python(self, im_path='dem.tif', shp_name=None):
         """Equivalent notebook call, for reproducibility."""

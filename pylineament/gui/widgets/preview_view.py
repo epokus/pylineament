@@ -6,11 +6,13 @@ from PyQt5.QtWidgets import (QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLay
 from skimage.filters import prewitt
 
 from ..style import default_style, point_colors
-from .common import (MapPlot, display_hillshade, make_brush, make_pen, path_item, robust_levels,
-                     segments_path)
+from .common import (MapPlot, colorize, display_hillshade, make_brush, make_pen, palette_lut,
+                     path_item, robust_levels, segments_path)
 
-AZIMUTHS = list(range(0, 360, 30))  # as in extract_lineament_points
-BACKGROUNDS = ['Tile DEM', 'Hillshade (algorithm)', 'Prewitt magnitude', 'Prewitt cut-off (>100)']
+AZIMUTHS = list(range(0, 360, 30))  # largest azimuth set (v1.0.1); one scatter layer each
+DEFAULT_AZIMUTHS = [0, 30, 60, 90, 120, 150]
+BACKGROUNDS = ['Tile DEM', 'Tile DEM + hillshade', 'Hillshade (algorithm)', 'Prewitt magnitude',
+               'Prewitt cut-off (>100)']
 NO_LINES = 'No line extracted, try fine-tuning the parameters (see How to use > Troubleshooting).'
 
 
@@ -35,11 +37,11 @@ class PreviewView(QWidget):
         self.tile.currentIndexChanged.connect(self._tile_changed)
         self.background = QComboBox()
         self.background.addItems(BACKGROUNDS)
-        self.background.setCurrentIndex(1)
+        self.background.setCurrentText('Hillshade (algorithm)')
         self.background.currentIndexChanged.connect(self._draw_background)
         self.azimuth = QComboBox()
-        for a in AZIMUTHS:
-            self.azimuth.addItem(f'{a}°', a)
+        self._azimuths = None
+        self._set_azimuths(DEFAULT_AZIMUTHS)
         self.azimuth.setToolTip('Hillshade azimuth (altitude 0°) used by the algorithm. '
                                 'Points are coloured by the azimuth that detected them.')
         self.azimuth.currentIndexChanged.connect(self._azimuth_changed)
@@ -52,8 +54,9 @@ class PreviewView(QWidget):
         self.show_final = QCheckBox('Final lines')
         self.show_final.setChecked(True)
         self.auto = QCheckBox('Auto preview')
-        self.auto.setChecked(True)
-        self.auto.setToolTip('Recompute the preview when the tile or a parameter changes')
+        self.auto.setChecked(False)
+        self.auto.setToolTip('When on, the preview recomputes automatically whenever the tile or a '
+                             'parameter changes. Off by default: press Preview (F5) instead.')
         for cb in (self.show_points, self.only_az, self.show_raw, self.show_final):
             cb.toggled.connect(self._update_visibility)
         refresh = QPushButton('Preview (F5)')
@@ -108,6 +111,7 @@ class PreviewView(QWidget):
         self.plot.addItem(self.final, ignoreBounds=True)
         self.busy = pg.TextItem('', color='#ffffff', fill=pg.mkBrush(0, 0, 0, 160), anchor=(0, 0))
         self.busy.setZValue(10)
+        self.busy.setVisible(False)
         self.plot.addItem(self.busy, ignoreBounds=True)
 
         lay = QVBoxLayout(self)
@@ -136,16 +140,31 @@ class PreviewView(QWidget):
         self.tile.setCurrentIndex(self.tile.findData(n))
         self.tile.blockSignals(False)
 
-    def set_stale(self, stale, pending):
-        """Show the out-of-date reminder; `pending` means a new preview is already on its way."""
+    def set_banner(self, kind, pending=False, shown=None, current=None):
+        """Reminder above the plot.
+
+        kind: None (hidden), 'none' (no preview computed yet), 'tile' (the displayed preview is of
+        another tile) or 'stale' (parameters changed since the displayed preview).
+        `pending` means a preview is already computing.
+        """
+        if kind is None:
+            self.stale_banner.setVisible(False)
+            return
         if pending:
-            self.stale_text.setText('⟳  Parameters changed: the preview below is out of date and '
-                                    'is being recomputed…')
+            text = '⟳  Computing the preview for this tile…'
+        elif kind == 'none':
+            text = ('ℹ  No preview yet. Press Preview (F5) to extract the lineaments of this tile '
+                    'with the current parameters.')
+        elif kind == 'tile':
+            text = (f'ℹ  This preview shows tile {shown}. Press Preview (F5) to extract the '
+                    f'lineaments of tile {current}.')
         else:
-            self.stale_text.setText('⚠  Parameters or tile changed since this preview was '
-                                    'computed. Refresh the preview to see their effect.')
+            text = ('⚠  Parameters or tile changed since this preview was computed. Refresh the '
+                    'preview to see their effect.')
+        self.stale_text.setText(text)
+        self.stale_button.setText('Refresh preview (F5)' if kind == 'stale' else 'Preview tile (F5)')
         self.stale_button.setVisible(not pending)
-        self.stale_banner.setVisible(stale)
+        self.stale_banner.setVisible(True)
 
     def set_busy(self, text):
         self.busy.setText(text)
@@ -161,8 +180,26 @@ class PreviewView(QWidget):
         self.stats.setText('No preview yet')
         self.warning.setVisible(False)
 
+    def _set_azimuths(self, azimuths):
+        """Azimuth selector and legend for the azimuth set of the displayed preview."""
+        azimuths = list(azimuths)
+        if azimuths == self._azimuths:
+            return
+        self._azimuths = azimuths
+        current = self.azimuth.currentData()
+        self.azimuth.blockSignals(True)
+        self.azimuth.clear()
+        for a in azimuths:
+            self.azimuth.addItem(f'{a}°', a)
+        i = self.azimuth.findData(current)
+        self.azimuth.setCurrentIndex(max(i, 0))
+        self.azimuth.blockSignals(False)
+        if hasattr(self, 'legend'):
+            self.apply_style(self.style_)
+
     def show_result(self, result, z_multip):
         new_tile = self.result is None or self.result['tile'].n != result['tile'].n
+        self._set_azimuths(result.get('azimuths', AZIMUTHS))
         self.result = result
         self.z_multip = z_multip
         self._draw_background()
@@ -178,7 +215,10 @@ class PreviewView(QWidget):
             self.plot.autoRange()
 
     def apply_style(self, style):
+        topo_changed = style.get('topo') != self.style_.get('topo')
         self.style_ = style
+        if topo_changed and self.background.currentText().startswith('Tile DEM'):
+            self._draw_background()
         self.raw.setPen(make_pen(style['fitted']))
         self.final.setPen(make_pen(style['final']))
         p = style['points']
@@ -191,7 +231,8 @@ class PreviewView(QWidget):
             self.legend.setText(f'Edge points: <span style="color:{p["color"]}">&#9632;</span>')
         else:
             self.legend.setText('Azimuth colours: ' + ' '.join(
-                f'<span style="color:{c}">&#9632;</span>{a}°' for a, c in zip(AZIMUTHS, colors)))
+                f'<span style="color:{c}">&#9632;</span>{a}°'
+                for a, c in zip(self._azimuths, colors)))
         self._repaint()
 
     # ---------------------------------------------------------------- drawing
@@ -208,22 +249,31 @@ class PreviewView(QWidget):
         if self.result is None:
             return
         dem = self.result['dem']
-        mode = self.background.currentIndex()
+        south = self.result['row0_south']
+        mode = self.background.currentText()
         az = self.azimuth.currentData()
         levels = None
-        if mode == 0:
-            img = dem
+        if mode.startswith('Tile DEM'):
+            t = self.style_['topo']
+            shade = None
+            if mode == 'Tile DEM + hillshade':
+                # display hillshade lit from the north-west in map orientation
+                north_up = dem[::-1] if south else dem
+                shade = display_hillshade(north_up, 315, 45, 1.0)
+                shade = shade[::-1] if south else shade
+            img = colorize(dem, t['vmin'], t['vmax'], palette_lut(t['palette'], t['reverse']),
+                           shade, t['hs_opacity'])
         else:
             img = display_hillshade(dem, az, 0, self.z_multip)
-            if mode >= 2:
+            if mode.startswith('Prewitt'):
                 img = prewitt(np.nan_to_num(img))
-                if mode == 3:
+                if 'cut-off' in mode:
                     img = (img > 100).astype('float32')
                     levels = (0.0, 1.0)
             else:
                 levels = robust_levels(img)
-        self.plot.set_image(img, self.result['rect'], levels=levels,
-                            row0_south=self.result['row0_south'])
+        self.plot.set_image(img, self.result['rect'], levels=levels, row0_south=south)
+        self._repaint()
 
     def _build_layers(self):
         """Load the result into the layer items (once per preview)."""
